@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>水浒传 Pinyin Reader</title>
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
+<script src="data.js"></script>
+<style>
+:root {
+  --bg: #f6f1e7; --panel: #fffaf0; --ink: #2b2420; --muted: #8a7c6c;
+  --accent: #a3322a; --line: #e2d6c2; --hl: #f7d9a8; --pop: #ffffff;
+  --shadow: 0 10px 30px rgba(60, 40, 20, .18);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1916; --panel: #24201c; --ink: #ece3d5; --muted: #a29482;
+    --accent: #e0766b; --line: #3a332c; --hl: #6b4b22; --pop: #2d2823;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1916; --panel: #24201c; --ink: #ece3d5; --muted: #a29482;
+  --accent: #e0766b; --line: #3a332c; --hl: #6b4b22; --pop: #2d2823;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, sans-serif; display: flex; }
+
+/* sidebar */
+#side { width: 300px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; height: 100vh; }
+#side header { padding: 18px 16px 10px; border-bottom: 1px solid var(--line); }
+#side h1 { margin: 0; font-family: "KaiTi", "STKaiti", serif; font-size: 30px; color: var(--accent); letter-spacing: 4px; }
+#side .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+#search { width: 100%; margin-top: 10px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 14px; }
+#toc { list-style: none; margin: 0; padding: 6px 0; overflow-y: auto; flex: 1; }
+#toc li { padding: 7px 16px; cursor: pointer; font-family: "SimSun", "Songti SC", serif; font-size: 14px; line-height: 1.4; border-left: 3px solid transparent; }
+#toc li:hover { background: var(--bg); }
+#toc li.on { border-left-color: var(--accent); background: var(--bg); color: var(--accent); }
+
+/* main */
+#main { flex: 1; height: 100vh; overflow-y: auto; }
+#bar { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; padding: 8px 16px; flex-wrap: wrap; }
+#bar button, #bar label { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+#bar button:hover { border-color: var(--accent); }
+#bar .grow { flex: 1; }
+#menuBtn { display: none; }
+#hint { font-size: 12px; color: var(--muted); }
+article { max-width: 780px; margin: 0 auto; padding: 28px 24px 120px; }
+article h2 { font-family: "SimHei", "Heiti SC", sans-serif; font-size: 24px; text-align: center; line-height: 1.6; margin: 10px 0 28px; }
+article p { font-family: "SimSun", "Songti SC", "Noto Serif SC", serif; font-size: var(--fs, 20px); line-height: 2; margin: 0 0 .6em; text-indent: 2em; text-align: justify; cursor: text; }
+article p.poem { font-family: "KaiTi", "STKaiti", serif; text-indent: 0; padding-left: 2em; }
+article.ruby p { line-height: 2.6; }
+ruby rt { font-family: "Segoe UI", sans-serif; font-size: .5em; color: var(--accent); }
+.nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 40px; }
+.nav button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.nav button:disabled { opacity: .35; cursor: default; }
+mark.hit { background: var(--hl); color: inherit; border-radius: 3px; }
+
+/* popup */
+#pop { position: fixed; z-index: 20; background: var(--pop); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 14px 16px 12px; max-width: min(520px, calc(100vw - 32px)); display: none; }
+#pop.show { display: block; animation: pin .12s ease-out; }
+@keyframes pin { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+#pop .py { font-size: 20px; color: var(--accent); font-weight: 600; letter-spacing: .5px; line-height: 1.5; }
+#pop .hz { font-family: "SimSun", "Songti SC", serif; font-size: 30px; line-height: 2.4; max-height: 50vh; overflow-y: auto; }
+#pop .hz ruby rt { font-size: .45em; }
+#pop .alt { font-size: 13px; color: var(--muted); margin-top: 4px; }
+#pop .tr { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--bg); border-radius: 6px; font-size: 15px; line-height: 1.55; white-space: pre-line; max-height: 30vh; overflow-y: auto; }
+#pop .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+#pop .acts button { font: inherit; font-size: 12px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+
+@media (max-width: 760px) {
+  #side { position: fixed; left: 0; top: 0; z-index: 30; transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow); }
+  #side.open { transform: none; }
+  #menuBtn { display: inline-flex !important; }
+  #hint { display: none; }
+  article { padding: 20px 16px 100px; }
+}
+</style>
+</head>
+<body>
+<aside id="side">
+  <header>
+    <h1>水浒传</h1>
+    <div class="sub">施耐庵 · 一百二十回本 — klik / blok teks untuk pinyin</div>
+    <input id="search" placeholder="Cari bab… (mis. 武松, 第二十三回)">
+  </header>
+  <ul id="toc"></ul>
+</aside>
+
+<main id="main">
+  <div id="bar">
+    <button id="menuBtn">☰ Bab</button>
+    <button id="rubyBtn" title="Tampilkan pinyin di atas semua karakter">拼 Pinyin semua: <b id="rubyState">mati</b></button>
+    <button id="toneBtn" title="Format nada">Nada: <b id="toneState">ā</b></button>
+    <button id="langBtn" title="Bahasa terjemahan">🌐 <b id="langState">Indonesia</b></button>
+    <button id="autoBtn" title="Langsung terjemahkan setiap kali popup muncul">Terjemah otomatis: <b id="autoState">mati</b></button>
+    <button id="smaller">A−</button>
+    <button id="bigger">A+</button>
+    <button id="themeBtn">◐</button>
+    <span class="grow"></span>
+    <span id="hint">Klik 1 karakter atau blok kalimat → muncul pinyin</span>
+  </div>
+  <article id="art"></article>
+</main>
+
+<div id="pop"></div>
+
+<script>
+(function () {
+  const BOOK = window.SHUIHU.filter(c => c.p && c.p.length);
+  const $ = id => document.getElementById(id);
+  const art = $('art'), pop = $('pop'), main = $('main');
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('shuihu.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('shuihu.' + k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const hasPy = () => typeof pinyinPro !== 'undefined';
+
+  let cur = store.get('chapter', 0);
+  let ruby = store.get('ruby', false);
+  let tone = store.get('tone', 'symbol');   // 'symbol' | 'num'
+  let fs = store.get('fs', 20);
+  let lang = store.get('lang', 'id');       // 'id' | 'en'
+  let autoTr = store.get('autoTr', false);
+  const isHan = ch => /[㐀-鿿豈-﫿]/.test(ch);
+
+  // pinyin of a whole paragraph, computed once so polyphones are read in context
+  const pyCache = new Map();
+  function paraPinyin(text) {
+    const key = tone + '|' + text;
+    if (pyCache.has(key)) return pyCache.get(key);
+    // nonZh 'spaced' gives exactly one entry per character; blank out the non-Han ones
+    const arr = pinyinPro.pinyin(text, { type: 'array', toneType: tone, nonZh: 'spaced' });
+    const out = [...text].map((ch, i) => isHan(ch) ? (arr[i] || '') : '');
+    pyCache.set(key, out);
+    return out;
+  }
+
+  // ---- table of contents
+  const toc = $('toc');
+  BOOK.forEach((c, i) => {
+    const li = document.createElement('li');
+    li.textContent = c.t.replace(/　/g, ' ');
+    li.onclick = () => { open(i); $('side').classList.remove('open'); };
+    toc.appendChild(li);
+  });
+  $('search').oninput = e => {
+    const q = e.target.value.trim();
+    [...toc.children].forEach((li, i) => {
+      li.style.display = !q || BOOK[i].t.includes(q) || BOOK[i].p.some(p => p.includes(q)) ? '' : 'none';
+    });
+  };
+
+  // ---- render a chapter
+  function esc(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+  function rubyHTML(text) {
+    const py = paraPinyin(text);
+    let h = '';
+    for (let i = 0; i < text.length; i++) {
+      h += py[i] ? `<ruby>${esc(text[i])}<rt>${py[i]}</rt></ruby>` : esc(text[i]);
+    }
+    return h;
+  }
+  function open(i, keepScroll) {
+    cur = Math.max(0, Math.min(BOOK.length - 1, i));
+    store.set('chapter', cur);
+    const c = BOOK[cur];
+    art.className = ruby && hasPy() ? 'ruby' : '';
+    let h = `<h2>${esc(c.t)}</h2>`;
+    c.p.forEach((raw, k) => {
+      const poem = raw[0] === '~', t = poem ? raw.slice(1) : raw;
+      h += `<p data-k="${k}"${poem ? ' class="poem"' : ''}>${ruby && hasPy() ? rubyHTML(t) : esc(t)}</p>`;
+    });
+    h += `<div class="nav"><button id="prev" ${cur === 0 ? 'disabled' : ''}>← Bab sebelumnya</button><button id="next" ${cur === BOOK.length - 1 ? 'disabled' : ''}>Bab berikutnya →</button></div>`;
+    art.innerHTML = h;
+    $('prev').onclick = () => open(cur - 1);
+    $('next').onclick = () => open(cur + 1);
+    [...toc.children].forEach((li, j) => li.classList.toggle('on', j === cur));
+    toc.children[cur].scrollIntoView({ block: 'nearest' });
+    if (!keepScroll) main.scrollTop = 0;
+    hide();
+  }
+  const paraText = p => { const raw = BOOK[cur].p[+p.dataset.k]; return raw[0] === '~' ? raw.slice(1) : raw; };
+
+  // ---- map a DOM point (node, offset) to a character index inside its <p>
+  function indexIn(p, node, off) {
+    const r = document.createRange();
+    r.setStart(p, 0);
+    try { r.setEnd(node, off); } catch (e) { return 0; }
+    // in ruby mode the <rt> text must not be counted
+    const frag = r.cloneContents();
+    frag.querySelectorAll('rt').forEach(x => x.remove());
+    return frag.textContent.length;
+  }
+
+  // ---- popup
+  function showPop(html, rect) {
+    pop.innerHTML = html;
+    pop.classList.add('show');
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let x = rect.left + rect.width / 2 - pw / 2;
+    x = Math.max(16, Math.min(x, window.innerWidth - pw - 16));
+    let y = rect.bottom + 10;
+    if (y + ph > window.innerHeight - 10) y = Math.max(10, rect.top - ph - 10);
+    pop.style.left = x + 'px'; pop.style.top = y + 'px';
+    const sp = pop.querySelector('[data-say]');
+    if (sp) sp.onclick = () => say(sp.dataset.say);
+    const cp = pop.querySelector('[data-copy]');
+    if (cp) cp.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(cp.dataset.copy); cp.textContent = '✓ Disalin'; };
+    const tr = pop.querySelector('[data-tr]');
+    if (tr) {
+      tr.onclick = () => runTranslate(tr.dataset.tr, tr);
+      if (autoTr) runTranslate(tr.dataset.tr, tr);
+    }
+  }
+
+  // ---- translation (Google Translate web endpoint, MyMemory as fallback)
+  const trCache = new Map();
+  async function translate(text) {
+    const key = lang + '|' + text;
+    if (trCache.has(key)) return trCache.get(key);
+    let out = '';
+    try {
+      const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&dt=t&dt=bd&tl=' + lang + '&q=' + encodeURIComponent(text);
+      const j = await (await fetch(u)).json();
+      out = (j[0] || []).map(x => x[0]).join('');
+      // single words also get dictionary senses
+      if (j[1]) out += '\n' + j[1].map(d => d[0] + ': ' + d[1].slice(0, 6).join(', ')).join('\n');
+    } catch (e) {
+      const u = 'https://api.mymemory.translated.net/get?langpair=zh-CN|' + lang + '&q=' + encodeURIComponent(text.slice(0, 480));
+      const j = await (await fetch(u)).json();
+      out = j.responseData && j.responseData.translatedText || '';
+    }
+    if (!out) throw new Error('empty');
+    trCache.set(key, out);
+    return out;
+  }
+  async function runTranslate(text, btn) {
+    let box = pop.querySelector('.tr');
+    if (!box) { box = document.createElement('div'); box.className = 'tr'; pop.insertBefore(box, pop.querySelector('.acts')); }
+    box.textContent = 'Menerjemahkan…';
+    btn.disabled = true;
+    try { box.textContent = await translate(text); }
+    catch (e) { box.textContent = 'Gagal menerjemahkan. Periksa koneksi internet.'; }
+    btn.disabled = false;
+  }
+  function hide() { pop.classList.remove('show'); }
+  function say(text) {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-CN'; u.rate = .8;
+    speechSynthesis.speak(u);
+  }
+  const attr = s => s.replace(/"/g, '&quot;');
+
+  function popChar(p, idx, rect) {
+    const text = paraText(p), ch = text[idx];
+    if (!ch || !isHan(ch)) { hide(); return; }
+    const py = paraPinyin(text)[idx];
+    let alt = '';
+    try {
+      const all = pinyinPro.polyphonic(ch, { toneType: tone, type: 'array' })[0] || [];
+      const others = all.filter(x => x !== py);
+      if (others.length) alt = `<div class="alt">Bacaan lain: ${others.join(' · ')}</div>`;
+    } catch (e) {}
+    showPop(`<div class="hz"><ruby>${esc(ch)}<rt>${py}</rt></ruby></div>
+      <div class="py">${py}</div>${alt}
+      <div class="acts"><button data-say="${attr(ch)}">🔊 Dengar</button><button data-tr="${attr(ch)}">🌐 Terjemahkan</button><button data-copy="${attr(ch + ' ' + py)}">Salin</button></div>`, rect);
+  }
+
+  function popRange(range) {
+    const paras = [...art.querySelectorAll('p')].filter(p => range.intersectsNode(p));
+    if (!paras.length) return;
+    let hz = '', plain = '', line = [];
+    paras.forEach((p, n) => {
+      const text = paraText(p), py = paraPinyin(text);
+      const s = p.contains(range.startContainer) ? indexIn(p, range.startContainer, range.startOffset) : 0;
+      const e = p.contains(range.endContainer) ? indexIn(p, range.endContainer, range.endOffset) : text.length;
+      for (let i = s; i < e; i++) {
+        hz += py[i] ? `<ruby>${esc(text[i])}<rt>${py[i]}</rt></ruby>` : esc(text[i]);
+        if (py[i]) line.push(py[i]); else if (/\S/.test(text[i])) line.push(text[i]);
+      }
+      plain += text.slice(s, e);
+      if (n < paras.length - 1) { hz += '<br>'; plain += '\n'; }
+    });
+    if (!plain.trim()) return;
+    const pyLine = line.join(' ').replace(/ ([，。！？；：、”’）》])/g, '$1').replace(/([“‘（《]) /g, '$1');
+    showPop(`<div class="hz">${hz}</div><div class="py">${esc(pyLine)}</div>
+      <div class="acts"><button data-say="${attr(plain)}">🔊 Dengar</button><button data-tr="${attr(plain)}">🌐 Terjemahkan</button><button data-copy="${attr(plain + '\n' + pyLine)}">Salin</button></div>`,
+      range.getBoundingClientRect());
+  }
+
+  function caretAt(x, y) {
+    if (document.caretPositionFromPoint) { const c = document.caretPositionFromPoint(x, y); return c && { node: c.offsetNode, off: c.offset }; }
+    if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); return r && { node: r.startContainer, off: r.startOffset }; }
+    return null;
+  }
+
+  // a selection (drag / long-press) wins over a plain click
+  function handle(ev) {
+    if (!hasPy()) { showPop('<div class="py">Pustaka pinyin belum termuat.</div><div class="alt">Pastikan laptop terhubung internet, lalu muat ulang halaman.</div>', { left: ev.clientX, right: ev.clientX, top: ev.clientY, bottom: ev.clientY, width: 0 }); return; }
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && art.contains(sel.anchorNode)) { popRange(sel.getRangeAt(0)); return; }
+    const p = ev.target.closest && ev.target.closest('article p');
+    if (!p) { hide(); return; }
+    const c = caretAt(ev.clientX, ev.clientY);
+    if (!c || !p.contains(c.node)) { hide(); return; }
+    let idx = indexIn(p, c.node, c.off);
+    // caret lands between chars: pick the char actually under the pointer
+    const text = paraText(p);
+    const r = document.createRange();
+    const pickRect = i => {
+      const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentNode.nodeName === 'RT' ? 2 : 1 });
+      let n, k = 0;
+      while ((n = w.nextNode())) { if (i < k + n.length) { r.setStart(n, i - k); r.setEnd(n, i - k + 1); return r.getBoundingClientRect(); } k += n.length; }
+      return null;
+    };
+    for (const i of [idx, idx - 1]) {
+      if (i < 0 || i >= text.length) continue;
+      const b = pickRect(i);
+      if (b && ev.clientX >= b.left - 1 && ev.clientX <= b.right + 1 && ev.clientY >= b.top - 4 && ev.clientY <= b.bottom + 4) { popChar(p, i, b); return; }
+    }
+    hide();
+  }
+  art.addEventListener('mouseup', ev => setTimeout(() => handle(ev), 0));
+  // touch: long-press selection fires selectionchange instead of mouseup
+  let selT;
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(selT);
+    selT = setTimeout(() => {
+      const s = window.getSelection();
+      if (s && !s.isCollapsed && art.contains(s.anchorNode) && hasPy()) popRange(s.getRangeAt(0));
+    }, 450);
+  });
+  document.addEventListener('mousedown', ev => { if (!pop.contains(ev.target) && !art.contains(ev.target)) hide(); });
+  document.addEventListener('keydown', ev => {
+    if (ev.target.tagName === 'INPUT') return;
+    if (ev.key === 'Escape') hide();
+    if (ev.key === 'ArrowRight' && ev.altKey) open(cur + 1);
+    if (ev.key === 'ArrowLeft' && ev.altKey) open(cur - 1);
+  });
+  main.addEventListener('scroll', hide, { passive: true });
+
+  // ---- toolbar
+  function applyFs() { document.documentElement.style.setProperty('--fs', fs + 'px'); store.set('fs', fs); }
+  $('smaller').onclick = () => { fs = Math.max(14, fs - 2); applyFs(); };
+  $('bigger').onclick = () => { fs = Math.min(40, fs + 2); applyFs(); };
+  $('rubyBtn').onclick = () => {
+    ruby = !ruby; store.set('ruby', ruby);
+    $('rubyState').textContent = ruby ? 'nyala' : 'mati';
+    const top = main.scrollTop; open(cur, true); main.scrollTop = top;
+  };
+  $('toneBtn').onclick = () => {
+    tone = tone === 'symbol' ? 'num' : 'symbol'; store.set('tone', tone);
+    $('toneState').textContent = tone === 'symbol' ? 'ā' : 'a1';
+    if (ruby) { const top = main.scrollTop; open(cur, true); main.scrollTop = top; }
+    hide();
+  };
+  $('themeBtn').onclick = () => {
+    const dark = getComputedStyle(document.body).backgroundColor === 'rgb(28, 25, 22)';
+    const t = dark ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t; store.set('theme', t);
+  };
+  $('menuBtn').onclick = () => $('side').classList.toggle('open');
+  const showTrState = () => {
+    $('langState').textContent = lang === 'id' ? 'Indonesia' : 'English';
+    $('autoState').textContent = autoTr ? 'nyala' : 'mati';
+  };
+  $('langBtn').onclick = () => { lang = lang === 'id' ? 'en' : 'id'; store.set('lang', lang); showTrState(); hide(); };
+  $('autoBtn').onclick = () => { autoTr = !autoTr; store.set('autoTr', autoTr); showTrState(); };
+  showTrState();
+
+  const th = store.get('theme', null); if (th) document.documentElement.dataset.theme = th;
+  $('rubyState').textContent = ruby ? 'nyala' : 'mati';
+  $('toneState').textContent = tone === 'symbol' ? 'ā' : 'a1';
+  applyFs();
+  open(cur);
+})();
+</script>
+</body>
+</html>
